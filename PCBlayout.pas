@@ -1,6 +1,6 @@
 unit PCBlayout;
 interface
-uses vectorD,complex2,stringe,footprint,draw,varu,s3Du;
+uses vectorD,complex2,stringe,footprint,draw,varu;
 type
 Tlayout = object(Tfoot)
   Np : integer; //number of ports
@@ -10,36 +10,31 @@ Tlayout = object(Tfoot)
   Ddraw : Pdraw;
   Nfoot : integer;
   Afoot : array of Pfoot;
-  hascalc2 : boolean; //if layout has been calc
-//  YY : cmat;
-//  RHS : cvec;
- YY : array of T3D;
- Yc : array of boolean;
+  YY : cmat;
+  RHS : cvec;
   ckt : pointer;
    parmn : integer;
    parm : array of Tparm;
  errorD,errorA : double;
   constructor create(P : pointer);  overload;
   constructor create(P : pointer;ports : integer); overload; 
-  function loadline(s : string) : Pfoot;
+  Procedure loadline(s : string);
   function getnode(s : string;var nuut:boolean ) : integer;
   function findcomp(s : string) : Pfoot;
-  function readfoot(s : string) : Pfoot;
-  function newfoot(wt,Cname : string;ss : tstrings) : Pfoot;
+  function readfoot(s : string) : boolean;
+  function newfoot(wt,Cname : string;ss : tstrings) : boolean;
   procedure calc;
   procedure drawlayout;
   Procedure readdraw(ss : Tstrings);
   function getsublayout(ss : tstrings) : Pfoot;
-//   Procedure getY(var Y : cmat;var RH : cvec); virtual;
-  procedure getDisp(x : integer;var DD : t3D); virtual;
-  Procedure draw(L : T3D;canvas : pdraw); virtual;
-  function nodePos(x : integer) : T3D;
+   Procedure getY(var Y : cmat;var RH : cvec); virtual;
+  Procedure draw(var V0 : cvec;canvas : pdraw); virtual;
 
 function paramnum(s : string) : integer; virtual;
 function paramstr(wat : integer) : string; virtual; 
 function getD(wat : integer) : double; virtual; 
 Procedure setD(z : double;wat : integer); virtual; 
-function Geterror(wat : integer) : double;
+function Geterror(wat : integer) : double; virtual;
 
   function penalty : double; virtual;
   end;
@@ -51,7 +46,7 @@ uses compu,sysutils,foots,sport,drawPCB,drawgbr;
 // **** Tlayout ***
 constructor Tlayout.create(P : pointer);
 begin
-inherited create(P);hascalc2:=false;Ddraw:=nil;
+inherited create(P);
 end; 
 
 constructor Tlayout.create(P : pointer;ports : integer);
@@ -63,92 +58,59 @@ Np:=ports;
 //Nn:=0;
 Nn:=ports-1;
 setlength(Sn,ports-1);
-for x:=1 to Nn do Sn[x-1]:=inttostr(x);hascalc2:=false;
+for x:=1 to Nn do Sn[x-1]:=inttostr(x);
 end;
 
 procedure Tlayout.calc;
 var
- x,y,z,Nt,yn : integer;
- finished : boolean;
-// Y3 : Rmat;
- MR : T3mat;//Rotation matrix
- DD,D0 : t3D;
- D1 : t3D;
-// DD,d0 : T3mat;//Direction matrix node 0
-// DR,r0 : T3vec;
+ x,y,Nt : integer;
 begin
-//write('f');
-//writeln(name,' Calc layout, Nfoot=',Nfoot);
-hascalc2:=true;
-hascalc:=true;
-for x:=0 to Nfoot-1 do Afoot[x]^.hascalc:=false;
-setlength(YY,Nn);
-setlength(Yc,Nn);
-for x:=0 to Nn-1 do Yc[x]:=false;
-Yc[0]:=true;
-YY[0].r:=t3vec0;
-YY[0].d:=t3matI;
- errorD:=0;errorA:=0;
-// write('Nfoot=',nfoot);
-repeat
-finished:=true;
- for y:=0 to Nfoot-1 do with Afoot[y]^ do if not(hascalc) then begin
-    x:=0;
-    while (x<nnode) and not(Yc[Anode[x]]) do inc(x);
-//    writeln('Calc footprint ',name,' known node=',x);
-    if x<nnode then begin 
-      finished:=false;
-      hascalc:=true;
-      //Calc node 0 if unknown
-      yn:=Anode[0];
-      if x>0 then begin
-//        write('gd');
-        getDisp(x,DD);
-        d0.d:=(YY[Anode[x]].d/Dnode[x])/DD.d;
-        d0.r:=YY[Anode[x]].r-d0.d*Dnode[x]*DD.r;
-        YY[yn]:=d0;
-        end else begin
-          if nnode=1 then getDisp(x,DD);
-          D0:=YY[yn];
-          end;
-//      RM3write('D0.d=',D0.d);
-//      write('nnode=',nnode);
-//      RV3write('D0.r=',D0.r);
-      //Calc other nodes
-      for z:=1 to nnode-1 do if z<>x then begin
-//        writeln('z=',z);
-        getDisp(z,DD);
-        yn:=Anode[z];
-        if Yc[yn] then begin
-         D1.d:=d0.d*Dnode[x];
-         errorA:=errorA+RM3abs2(YY[yn].d-d1.d*DD.D);
-         errorD:=errorD+RV3abs2(YY[yn].r-(d0.r+d1.d*DD.r));
-         //add to error
-         end else begin
-           D1.r:=d0.r;
-           D1.d:=d0.d*Dnode[x];
-           YY[yn]:=T3Dadd(D1,DD);
-//      RM3write('D1=',YY[yn].d);
-//      RV3write('D1=',YY[yn].r);
-           Yc[yn]:=true;
-         end; //if Yc
-      end; //for z
-     end; //if x<
-    end; // for y
-until finished;
-//writeln('Draw layout...');
+Ne:=1;
+for x:=0 to Nfoot-1 do begin
+ Afoot[x]^.Nodei:=Ne;
+ Ne:=Ne+Afoot[x]^.Nnode-1;
+ end;
+//writeln(name,': solving layout: ports=',Np,' nodes=',Nn,' eq=',Ne,'...');
+//write(name,':L ');
+CMsetsize(2*Nn,2*Ne,YY);
+for x:=0 to 2*Nn-1 do for y:=0 to 2*Ne-1 do YY[x,y]:=czero;
+setlength(RHS,2*Ne);
+errorD:=0;errorA:=0;
+for x:=0 to Nfoot-1 do begin
+//   writeln(Afoot[x]^.name,' get');
+   Afoot[x]^.getY(YY,RHS);
+   errorD:=errorD+sqr(Afoot[x]^.geterror(1));
+   errorA:=errora+sqr(Afoot[x]^.geterror(2));
+   end;
+//CMwrite(2*Nn,2*Ne,YY);
+//Nt:=Nn;
+//if Ne+Np<Nt then Nt:=Ne+Np;
+//write(name,': solving layout ...');
+x:=CMelim2(2*Nn,YY,2,2*nn-1,2*Ne-1);
+  if x<>0 then begin
+  writeln(name,': solving layout: ports=',Np,' nodes=',Nn,' eq=',Ne,'...');
+   writeln(name,': Error Solving Node ',Sn[x div 2]);
+//   CMwrite(2*Nn,2*Ne,YY);
+    halt(1);
+   end;
+//   CMwrite(2*Nn,2*Ne,YY);
+if Ne>Nn then begin
+ for x:=nn to Ne-1 do begin
+//  cwriteEng(YY[0,2*x]);
+//  cwriteEng(YY[1,2*x]);
+//  cwriteEng(YY[0,2*x+1]);
+//  cwriteEng(YY[1,2*x+1]);
+  errorD:=errorD+cabs2(YY[1,2*x]);
+  errorA:=errorA+cabs2(YY[1,2*x+1]);
+  end;
+  errorA:=sqrt(errorA{/(ne-nn)});
+  errorD:=sqrt(errorD{/(ne-nn)});
+// writeln('RMS error: Distance =',sqrt(er)*1000:0:2,'mm Angle=',sqrt(eth)*180/pi:0:2,' grade');
+  end;
+//writeln(name,': DONE'); 
+//CMwrite(2*Nn,2*Ne,YY);
 drawlayout;
-//writeln('Done');
 end;
-
-
-procedure Tlayout.getDisp(x : integer;var DD : t3D);
-begin
-//if not(hascalc2) then calc;
-calc;
-DD:=YY[x];
-end;
-
 function Tlayout.Geterror(wat : integer) : double;
 begin
 case wat of
@@ -163,15 +125,24 @@ end;
 procedure Tlayout.drawlayout;
 var
  x : integer;
- L : T3D;
+ V0 : cvec;
 begin
-if not(hascalc2) then calc;
 if Ddraw=nil then exit;
-for x:=0 to Nfoot-1 do with Afoot[x]^ do begin
-  L:=YY[anode[0]];
-  L.d:=L.d/Dnode[0];
-  draw(L,Ddraw);
+//writeln(name,' ',length(Dnode));
+setlength(V0,2*ne);
+YY[0,0]:=czero;
+YY[0,1]:=czero;
+YY[1,0]:=czero;
+YY[1,1]:=-r2c(1,0){*Dnode[0]};
+for x:=0 to Ne-1 do begin
+  V0[2*x  ]:=-YY[0,2*x  ]*0-YY[1,2*x  ]*1;
+  V0[2*x+1]:=-YY[0,2*x+1]*0-YY[1,2*x+1]*1;
   end;
+//CVwrite(2*ne,V0);
+for x:=0 to Nfoot-1 do begin
+// writeln(Afoot[x]^.name);
+ Afoot[x]^.draw(V0,Ddraw);
+ end;
 Ddraw^.closedrw;
 //Ddraw^.show;
 end;
@@ -207,10 +178,7 @@ if ss[1]='GERBER' then begin
   Ddraw:=new(Pgerber,create(ss[2]));
   writeln('Drawing to gerber format "',ss[2],'"');
   end else exit;
-for x:=3 to len(ss) do if uppercase(ss[x])='SHOW' then Ddraw^.doshow:=true else
-                       if uppercase(ss[x])='XZ' then Ddraw^.proj:=1 else
-                       if uppercase(ss[x])='YZ' then Ddraw^.proj:=2;
-
+for x:=3 to len(ss) do if uppercase(ss[x])='SHOW' then Ddraw^.doshow:=true;
 end;
 
 function Tlayout.getnode(s : string;var nuut:boolean) : integer;
@@ -237,9 +205,11 @@ begin
  if x=Nfoot then findcomp:=nil else findcomp:=Afoot[x];
 end;
 
-function Tlayout.loadline(s : string) : Pfoot;
+Procedure Tlayout.loadline(s : string);
+var
+ C : Pfoot;
 begin
-loadline:=readfoot(s);
+readfoot(s);
 end;
 
 function Tlayout.getsublayout(ss : tstrings) : Pfoot;
@@ -252,7 +222,7 @@ begin
  l:=len(ss)-2;
 // writeln('ports=',l);
  C:=Psport(ckt)^.findcomp(ss[l+2]);
- if (C=nil) or (copy(C^.tiepe,1,3)<>'CKT') then begin
+ if (C=nil) or (C^.tiepe<>'CKT') then begin
     writeln(ss[l+2],' not a subcircuit!');
     halt(1);
     end;
@@ -271,12 +241,12 @@ begin
  getsublayout:=P;
 end;
 
-function Tlayout.newfoot(wt,Cname : string;ss : tstrings) : Pfoot;
+function Tlayout.newfoot(wt,Cname : string;ss : tstrings) : boolean;
 var
  tmp : Pfoot;
  C : Pfoot;
 begin;
-newfoot:=nil;
+newfoot:=false;
 tmp:=findcomp(Cname);
 if tmp<>nil then begin
 //   writeln('Copy: FP:',Cname);
@@ -297,36 +267,36 @@ else if wt='MSCNR' then C:=new(PFcorner,create(@self))
 else if wt='MSBEND' then C:=new(PFbend,create(@self))
 else if wt='M2PAD' then C:=new(P2pad,create(@self))
 else if wt='M2PAD2' then C:=new(P2pad2,create(@self))
+else if wt='M2PADM' then C:=new(P2padM,create(@self))
 else if wt='MSPAD' then C:=new(PFpad,create(@self))
 else if wt='M2PNT' then C:=new(P2pnt,create(@self))
 else if wt='M4PNT' then C:=new(P4pnt,create(@self))
 else if wt='CKT'   then C:=getsublayout(ss)
 else if wt='DRAW' then begin;readdraw(ss);exit;end
 else begin if wt<>'' then writeln('Unknow component ',wt);exit; end;
-//writeln('Comp ',wt,' created');
+writeln('Comp ',wt,' created');
 C^.name:=Cname;
 C^.tiepe:=wt; 
 //x:=pos('$',s);
 //if x>0 then subset(ss,Nset,sets);
-//write('loads..');
-{newfoot:=}
-C^.loads(ss);
-//writeln('OK');
-//newfoot:=true;
+write('loads..');
+newfoot:=C^.loads(ss);
+writeln('OK');
+newfoot:=true;
 
 inc(Nfoot);
 setlength(Afoot,Nfoot);
 Afoot[Nfoot-1]:=C;
-newfoot:=C;
+
 end;
 
-function Tlayout.readfoot(s : string) : Pfoot;
+function Tlayout.readfoot(s : string) : boolean;
 var
  ss : tstrings;
  wt,Cname : string;
  x : integer;
 begin
-readfoot:=nil;//false;
+readfoot:=false;
 x:=pos(#9,s); 
 while x<>0 do begin
  s[x]:=' ';
@@ -342,48 +312,42 @@ Cname:=uppercase(copy(ss[1],x+1,length(ss[1])-x));
 readfoot:=newfoot(wt,Cname,ss);
 end;
 
-{Procedure Tlayout.getY(var Y : cmat;var RH : cvec);
+Procedure Tlayout.getY(var Y : cmat;var RH : cvec);
 var
  x : integer;
 begin
 calc;
 for x:=0 to nnode-2 do begin
 Y[2*Anode[0]   ,2*(nodeI+x)  ]:=YY[0,x*2+2];
-Y[2*Anode[0]+1 ,2*(nodeI+x)  ]:=YY[1,x*2+2];
+Y[2*Anode[0]+1 ,2*(nodeI+x)  ]:=YY[1,x*2+2]*Dnode[0];
 Y[2*Anode[x+1] ,2*(nodeI+x)  ]:=r2c(1,0);
 //th1=th2
 Y[2*Anode[0]    ,2*(nodeI+x)+1]:=YY[0,x*2+3];
-Y[2*Anode[0]+1  ,2*(nodeI+x)+1]:=YY[1,x*2+3];
-Y[2*Anode[x+1]+1,2*(nodeI+x)+1]:=r2c(1,0);
+Y[2*Anode[0]+1  ,2*(nodeI+x)+1]:=YY[1,x*2+3]*Dnode[0];
+Y[2*Anode[x+1]+1,2*(nodeI+x)+1]:=r2c(1,0)*Dnode[x+1];
 end;end;
-}
-Procedure Tlayout.draw(L : T3D;canvas : pdraw);
+
+Procedure Tlayout.draw(var V0 : cvec;canvas : pdraw);
 var
- x,yn : integer;
- L2 : T3D;
+ x : integer;
+ V1 : cvec;
 begin
-if not(hascalc2) then calc;
-for x:=0 to Nfoot-1 do with Afoot[x]^ do begin
- Yn:=Anode[0];
- L2.d:=(L.d*YY[yn].d)/Dnode[0];
- L2.r:=L.r+L.d*YY[yn].r;
- Afoot[x]^.draw(L2,canvas);
+//CVwrite(6,V0);
+//writeln('AN ',Anode[0],' ',Anode[1]);
+setlength(V1,2*ne);
+YY[0,0]:=-r2c(1,0);
+YY[0,1]:=czero;
+YY[1,0]:=czero;
+YY[1,1]:=-r2c(1,0);
+for x:=0 to Ne-1 do begin
+  V1[2*x  ]:=-YY[0,2*x  ]*V0[2*Anode[0]]-YY[1,2*x  ]*V0[2*Anode[0]+1]*Dnode[0];
+  V1[2*x+1]:=-YY[0,2*x+1]*V0[2*Anode[0]]-YY[1,2*x+1]*V0[2*Anode[0]+1]*Dnode[0];
+  end;
+//CVwrite(2*ne,V1);
+for x:=0 to Nfoot-1 do begin
+// writeln(Afoot[x]^.name);
+ Afoot[x]^.draw(V1,canvas);
  end;
-end;
-
-function Tlayout.nodePos(x : integer) : t3D;
-var
- L2 : T3D;
-begin
-if not(hascalc2) then calc;
-if parent<>nil then begin;
-  L2:=Playout(parent)^.nodepos(Anode[0]);
-  L2:=T3Dadd(L2,YY[x]);
-//  L2.d:=L2.d/Dnode[x];
-end else
-  L2:=YY[x];
-
-nodepos:=L2;
 end;
 
 function Tlayout.paramnum(s : string) : integer;
@@ -438,8 +402,6 @@ if (wat<1) or (wat>parmn) then exit;
 with parm[wat-1] do begin
   if C^.getD(W)=z then exit;
   C^.setD(z,W);
-//  C^.hascalc:=false;
-  hascalc:=false;
 //  if savedata then nsavedata:=0;
   end;
 end;
