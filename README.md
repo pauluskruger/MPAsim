@@ -1,0 +1,1 @@
+fpc -Sh -O3 run
